@@ -5,9 +5,15 @@ import VotingHero from "@/components/VotingHero";
 import VotingDashboard from "@/components/VotingDashboard";
 import BlockchainFeatures from "@/components/BlockchainFeatures";
 import { useAuth } from '@/hooks/useAuth';
+import { UserDashboard } from '@/components/UserDashboard';
 
 const Index = () => {
   const { user, isAdmin } = useAuth();
+
+  // If user is logged in and not admin, show user dashboard
+  if (user && !isAdmin) {
+    return <UserDashboard />;
+  }
 
   return (
     <main>

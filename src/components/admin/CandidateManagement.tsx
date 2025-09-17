@@ -12,6 +12,12 @@ import { UserCheck, Plus, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+interface Position {
+  id: string;
+  title: string;
+  election_id: string;
+}
+
 interface Election {
   id: string;
   title: string;
@@ -20,17 +26,21 @@ interface Election {
 interface Candidate {
   id: string;
   election_id: string;
+  position_id: string;
   name: string;
   party: string;
   description: string;
   image_url: string | null;
   vote_count: number;
   elections: { title: string };
+  positions: { title: string };
 }
 
 export const CandidateManagement = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [elections, setElections] = useState<Election[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [selectedElectionId, setSelectedElectionId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
@@ -47,7 +57,8 @@ export const CandidateManagement = () => {
         .from('candidates')
         .select(`
           *,
-          elections!inner(title)
+          elections!inner(title),
+          positions!inner(title)
         `)
         .order('name');
 
@@ -61,8 +72,17 @@ export const CandidateManagement = () => {
 
       if (electionsError) throw electionsError;
 
+      // Fetch positions for the dropdown
+      const { data: positionsData, error: positionsError } = await supabase
+        .from('positions')
+        .select('id, title, election_id')
+        .order('title');
+
+      if (positionsError) throw positionsError;
+
       setCandidates(candidatesData || []);
       setElections(electionsData || []);
+      setPositions(positionsData || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
@@ -75,6 +95,10 @@ export const CandidateManagement = () => {
     }
   };
 
+  const getPositionsForElection = (electionId: string) => {
+    return positions.filter(position => position.election_id === electionId);
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
@@ -82,15 +106,22 @@ export const CandidateManagement = () => {
     const name = formData.get('name') as string;
     const party = formData.get('party') as string;
     const description = formData.get('description') as string;
-    const electionId = formData.get('electionId') as string;
+    const positionId = formData.get('positionId') as string;
     const imageUrl = formData.get('imageUrl') as string;
 
     try {
+      // Get the election_id from the selected position
+      const selectedPosition = positions.find(p => p.id === positionId);
+      if (!selectedPosition) {
+        throw new Error('Invalid position selected');
+      }
+
       const candidateData = {
         name,
         party,
         description,
-        election_id: electionId,
+        election_id: selectedPosition.election_id,
+        position_id: positionId,
         image_url: imageUrl || null,
       };
 
@@ -207,7 +238,11 @@ export const CandidateManagement = () => {
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="electionId">Election</Label>
-                    <Select name="electionId" defaultValue={editingCandidate?.election_id || ''} required>
+                    <Select 
+                      value={selectedElectionId || editingCandidate?.election_id || ''} 
+                      onValueChange={setSelectedElectionId}
+                      required
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an election" />
                       </SelectTrigger>
@@ -215,6 +250,22 @@ export const CandidateManagement = () => {
                         {elections.map((election) => (
                           <SelectItem key={election.id} value={election.id}>
                             {election.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="positionId">Position</Label>
+                    <Select name="positionId" defaultValue={editingCandidate?.position_id || ''} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a position" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getPositionsForElection(selectedElectionId || editingCandidate?.election_id || '').map((position) => (
+                          <SelectItem key={position.id} value={position.id}>
+                            {position.title}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -284,6 +335,7 @@ export const CandidateManagement = () => {
               <TableHead>Candidate</TableHead>
               <TableHead>Party</TableHead>
               <TableHead>Election</TableHead>
+              <TableHead>Position</TableHead>
               <TableHead>Votes</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -309,6 +361,7 @@ export const CandidateManagement = () => {
                 </TableCell>
                 <TableCell>{candidate.party}</TableCell>
                 <TableCell>{candidate.elections.title}</TableCell>
+                <TableCell>{candidate.positions.title}</TableCell>
                 <TableCell>
                   <div className="font-semibold">{candidate.vote_count}</div>
                 </TableCell>

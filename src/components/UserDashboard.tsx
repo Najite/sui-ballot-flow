@@ -1,0 +1,480 @@
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Vote, Clock, Users, Trophy, Calendar, MapPin, CheckCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+
+interface Election {
+  id: string;
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+}
+
+interface Position {
+  id: string;
+  title: string;
+  description: string;
+  election_id: string;
+}
+
+interface Candidate {
+  id: string;
+  name: string;
+  party: string;
+  description: string;
+  image_url: string | null;
+  vote_count: number;
+  position_id: string;
+}
+
+interface Vote {
+  id: string;
+  position_id: string;
+  candidate_id: string;
+}
+
+export const UserDashboard = () => {
+  const [elections, setElections] = useState<Election[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [userVotes, setUserVotes] = useState<Vote[]>([]);
+  const [selectedElectionId, setSelectedElectionId] = useState<string>('');
+  const [votingData, setVotingData] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      fetchElections();
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (selectedElectionId) {
+      fetchElectionData();
+    }
+  }, [selectedElectionId]);
+
+  const fetchElections = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('elections')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setElections(data || []);
+      
+      // Auto-select the first active election
+      const activeElection = data?.find(e => {
+        const now = new Date();
+        const startTime = new Date(e.start_time);
+        const endTime = new Date(e.end_time);
+        return now >= startTime && now <= endTime;
+      });
+      
+      if (activeElection) {
+        setSelectedElectionId(activeElection.id);
+      } else if (data && data.length > 0) {
+        setSelectedElectionId(data[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching elections:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load elections",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchElectionData = async () => {
+    if (!selectedElectionId || !user) return;
+
+    try {
+      // Fetch positions for the selected election
+      const { data: positionsData, error: positionsError } = await supabase
+        .from('positions')
+        .select('*')
+        .eq('election_id', selectedElectionId)
+        .order('title');
+
+      if (positionsError) throw positionsError;
+
+      // Fetch candidates for the selected election
+      const { data: candidatesData, error: candidatesError } = await supabase
+        .from('candidates')
+        .select('*')
+        .eq('election_id', selectedElectionId)
+        .order('name');
+
+      if (candidatesError) throw candidatesError;
+
+      // Fetch user's votes for this election
+      const { data: votesData, error: votesError } = await supabase
+        .from('votes')
+        .select('*')
+        .eq('voter_id', user.id)
+        .eq('election_id', selectedElectionId);
+
+      if (votesError) throw votesError;
+
+      setPositions(positionsData || []);
+      setCandidates(candidatesData || []);
+      setUserVotes(votesData || []);
+
+      // Initialize voting data with existing votes
+      const initialVotingData: Record<string, string> = {};
+      votesData?.forEach(vote => {
+        initialVotingData[vote.position_id] = vote.candidate_id;
+      });
+      setVotingData(initialVotingData);
+
+    } catch (error) {
+      console.error('Error fetching election data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load election data",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleVoteChange = (positionId: string, candidateId: string) => {
+    setVotingData(prev => ({
+      ...prev,
+      [positionId]: candidateId
+    }));
+  };
+
+  const submitVotes = async () => {
+    if (!user || !selectedElectionId) return;
+
+    setSubmitting(true);
+    try {
+      // Get the selected election to check if voting is allowed
+      const selectedElection = elections.find(e => e.id === selectedElectionId);
+      if (!selectedElection) {
+        throw new Error('Election not found');
+      }
+
+      const now = new Date();
+      const startTime = new Date(selectedElection.start_time);
+      const endTime = new Date(selectedElection.end_time);
+
+      if (now < startTime) {
+        throw new Error('Voting has not started yet');
+      }
+
+      if (now > endTime) {
+        throw new Error('Voting has ended');
+      }
+
+      // Process each position vote
+      for (const [positionId, candidateId] of Object.entries(votingData)) {
+        if (!candidateId) continue;
+
+        // Check if user already voted for this position
+        const existingVote = userVotes.find(v => v.position_id === positionId);
+
+        if (existingVote) {
+          // Update existing vote
+          if (existingVote.candidate_id !== candidateId) {
+            const { error } = await supabase
+              .from('votes')
+              .update({ 
+                candidate_id: candidateId,
+                election_id: selectedElectionId 
+              })
+              .eq('id', existingVote.id);
+
+            if (error) throw error;
+          }
+        } else {
+          // Insert new vote
+          const { error } = await supabase
+            .from('votes')
+            .insert({
+              election_id: selectedElectionId,
+              position_id: positionId,
+              candidate_id: candidateId,
+              voter_id: user.id
+            });
+
+          if (error) throw error;
+        }
+      }
+
+      toast({
+        title: "Success",
+        description: "Your votes have been submitted successfully!",
+      });
+
+      // Refresh the data to show updated votes
+      fetchElectionData();
+
+    } catch (error) {
+      console.error('Error submitting votes:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to submit votes",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const getElectionStatus = (election: Election) => {
+    const now = new Date();
+    const startTime = new Date(election.start_time);
+    const endTime = new Date(election.end_time);
+
+    if (now < startTime) {
+      return { label: 'Upcoming', variant: 'secondary' as const, canVote: false };
+    } else if (now >= startTime && now <= endTime) {
+      return { label: 'Active', variant: 'default' as const, canVote: true };
+    } else {
+      return { label: 'Ended', variant: 'outline' as const, canVote: false };
+    }
+  };
+
+  const getCandidatesForPosition = (positionId: string) => {
+    return candidates.filter(candidate => candidate.position_id === positionId);
+  };
+
+  const hasUserVoted = (positionId: string) => {
+    return userVotes.some(vote => vote.position_id === positionId);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  const selectedElection = elections.find(e => e.id === selectedElectionId);
+  const electionStatus = selectedElection ? getElectionStatus(selectedElection) : null;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background to-muted">
+      {/* Header */}
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Voting Dashboard
+              </h1>
+              <Badge variant="secondary">Voter</Badge>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-muted-foreground">
+                Welcome, {user?.email}
+              </span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-4 py-8">
+        {/* Election Selector */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Vote className="w-5 h-5" />
+              Select Election
+            </CardTitle>
+            <CardDescription>
+              Choose an election to view positions and cast your votes
+            </CardDescription>
+          </CardHeader>
+          
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {elections.map((election) => {
+                const status = getElectionStatus(election);
+                return (
+                  <Card 
+                    key={election.id} 
+                    className={`cursor-pointer transition-all hover:shadow-md ${
+                      selectedElectionId === election.id ? 'ring-2 ring-primary' : ''
+                    }`}
+                    onClick={() => setSelectedElectionId(election.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold">{election.title}</h3>
+                        <Badge variant={status.variant}>
+                          {status.label}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        {election.description}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(election.start_time).toLocaleDateString()}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(election.end_time).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Voting Interface */}
+        {selectedElection && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{selectedElection.title}</CardTitle>
+                    <CardDescription>{selectedElection.description}</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    {electionStatus && (
+                      <Badge variant={electionStatus.variant}>
+                        {electionStatus.label}
+                      </Badge>
+                    )}
+                    {electionStatus?.canVote && (
+                      <Button 
+                        onClick={submitVotes}
+                        disabled={submitting || Object.keys(votingData).length === 0}
+                        className="vote-button"
+                      >
+                        {submitting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Submitting...
+                          </>
+                        ) : (
+                          <>
+                            <Vote className="w-4 h-4 mr-2" />
+                            Submit Votes
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* Positions and Candidates */}
+            {positions.map((position) => {
+              const positionCandidates = getCandidatesForPosition(position.id);
+              const userVoted = hasUserVoted(position.id);
+              
+              return (
+                <Card key={position.id} className="vote-card">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <MapPin className="w-5 h-5" />
+                          {position.title}
+                          {userVoted && (
+                            <CheckCircle className="w-5 h-5 text-success" />
+                          )}
+                        </CardTitle>
+                        <CardDescription>{position.description}</CardDescription>
+                      </div>
+                      {userVoted && (
+                        <Badge className="bg-success text-success-foreground">
+                          Voted
+                        </Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    {positionCandidates.length > 0 ? (
+                      <RadioGroup
+                        value={votingData[position.id] || ''}
+                        onValueChange={(value) => handleVoteChange(position.id, value)}
+                        disabled={!electionStatus?.canVote}
+                      >
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {positionCandidates.map((candidate) => (
+                            <div key={candidate.id} className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                              <RadioGroupItem value={candidate.id} id={candidate.id} />
+                              <div className="flex items-center space-x-3 flex-1">
+                                <Avatar>
+                                  <AvatarImage src={candidate.image_url || ''} alt={candidate.name} />
+                                  <AvatarFallback>
+                                    {candidate.name.split(' ').map(n => n[0]).join('')}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                  <Label htmlFor={candidate.id} className="cursor-pointer">
+                                    <div className="font-medium">{candidate.name}</div>
+                                    <div className="text-sm text-muted-foreground">{candidate.party}</div>
+                                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                      {candidate.description}
+                                    </div>
+                                  </Label>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </RadioGroup>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No candidates available for this position
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {positions.length === 0 && (
+              <Card>
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  No positions available for this election
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {elections.length === 0 && (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              No elections available at this time
+            </CardContent>
+          </Card>
+        )}
+      </main>
+    </div>
+  );
+};

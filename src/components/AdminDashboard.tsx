@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { UserManagement } from './admin/UserManagement';
 import { ElectionManagement } from './admin/ElectionManagement';
 import { CandidateManagement } from './admin/CandidateManagement';
+import { PositionManagement } from './admin/PositionManagement';
 import { VotingResults } from './admin/VotingResults';
 
 export const AdminDashboard = () => {
@@ -129,9 +130,10 @@ export const AdminDashboard = () => {
 
         {/* Management Tabs */}
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="elections">Elections</TabsTrigger>
+            <TabsTrigger value="positions">Positions</TabsTrigger>
             <TabsTrigger value="candidates">Candidates</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
           </TabsList>
@@ -142,6 +144,10 @@ export const AdminDashboard = () => {
 
           <TabsContent value="elections" className="space-y-6">
             <ElectionManagement />
+          </TabsContent>
+
+          <TabsContent value="positions" className="space-y-6">
+            <PositionManagement />
           </TabsContent>
 
           <TabsContent value="candidates" className="space-y-6">
