@@ -11,7 +11,7 @@ import { Calendar, Plus, Edit, Trash2, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Dialog as ViewDialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog as ViewDialog, DialogContent as ViewDialogContent, DialogDescription as ViewDialogDescription, DialogHeader as ViewDialogHeader, DialogTitle as ViewDialogTitle } from '@/components/ui/dialog';
 
 interface Election {
   id: string;
@@ -418,13 +418,13 @@ export const ElectionManagement = () => {
 
       {/* View Election Details Dialog */}
       <ViewDialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{viewingElection?.title}</DialogTitle>
-            <DialogDescription>
+        <ViewDialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <ViewDialogHeader>
+            <ViewDialogTitle>{viewingElection?.title}</ViewDialogTitle>
+            <ViewDialogDescription>
               Election details and current results
-            </DialogDescription>
-          </DialogHeader>
+            </ViewDialogDescription>
+          </ViewDialogHeader>
           
           {viewingElection && (
             <div className="space-y-6">
@@ -491,7 +491,7 @@ export const ElectionManagement = () => {
               </div>
             </div>
           )}
-        </DialogContent>
+        </ViewDialogContent>
       </ViewDialog>
     </Card>
   );
