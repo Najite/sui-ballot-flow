@@ -60,6 +60,39 @@ export const UserDashboard = () => {
   useEffect(() => {
     if (selectedElectionId) {
       fetchElectionData();
+      
+      // Set up real-time subscription for vote updates
+      const channel = supabase
+        .channel(`election-${selectedElectionId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'votes',
+            filter: `election_id=eq.${selectedElectionId}`
+          },
+          () => {
+            fetchElectionData();
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'candidates',
+            filter: `election_id=eq.${selectedElectionId}`
+          },
+          () => {
+            fetchElectionData();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [selectedElectionId]);
 
