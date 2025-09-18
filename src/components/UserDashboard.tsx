@@ -6,10 +6,11 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Vote, Clock, Users, Trophy, Calendar, MapPin, CheckCircle } from 'lucide-react';
+import { Vote, Clock, Users, Trophy, Calendar, MapPin, CheckCircle, LogOut, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Election {
   id: string;
@@ -52,12 +53,14 @@ export const UserDashboard = () => {
   const [votingData, setVotingData] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     if (user) {
       fetchElections();
+      fetchUserProfile();
     }
   }, [user]);
 
@@ -100,6 +103,23 @@ export const UserDashboard = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
     }
   };
 
@@ -290,12 +310,40 @@ export const UserDashboard = () => {
               <span className="text-sm text-muted-foreground">
                 Welcome, {user?.email}
               </span>
+              <Button 
+                onClick={signOut}
+                variant="outline" 
+                size="sm"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* User Status Alert */}
+        {userProfile && userProfile.role === 'pending' && (
+          <Alert className="mb-6 border-warning bg-warning/10">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Your account is pending approval. Only approved voters can cast votes in elections. 
+              Please wait for an administrator to approve your account.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {userProfile && userProfile.role === 'voter' && !userProfile.approved_at && (
+          <Alert className="mb-6 border-warning bg-warning/10">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Your voter account needs final approval. Please wait for an administrator to approve your voting privileges.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Election Selector */}
         <Card className="mb-8">
           <CardHeader>
@@ -364,7 +412,7 @@ export const UserDashboard = () => {
                         {electionStatus.label}
                       </Badge>
                     )}
-                    {electionStatus?.canVote && (
+                    {electionStatus?.canVote && userProfile?.role === 'voter' && userProfile?.approved_at && (
                       <Button 
                         onClick={submitVotes}
                         disabled={submitting || Object.keys(votingData).length === 0}
@@ -382,6 +430,11 @@ export const UserDashboard = () => {
                           </>
                         )}
                       </Button>
+                    )}
+                    {electionStatus?.canVote && userProfile?.role !== 'voter' && (
+                      <div className="text-sm text-muted-foreground">
+                        Only approved voters can cast votes
+                      </div>
                     )}
                   </div>
                 </div>
@@ -420,7 +473,7 @@ export const UserDashboard = () => {
                       <RadioGroup
                         value={votingData[position.id] || ''}
                         onValueChange={(value) => handleVoteChange(position.id, value)}
-                        disabled={!electionStatus?.canVote}
+                        disabled={!electionStatus?.canVote || userProfile?.role !== 'voter' || !userProfile?.approved_at}
                       >
                         <div className="grid gap-4 md:grid-cols-2">
                           {positionCandidates.map((candidate) => (

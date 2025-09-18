@@ -6,9 +6,10 @@ import VotingDashboard from "@/components/VotingDashboard";
 import BlockchainFeatures from "@/components/BlockchainFeatures";
 import { useAuth } from '@/hooks/useAuth';
 import { UserDashboard } from '@/components/UserDashboard';
+import { LogOut } from 'lucide-react';
 
 const Index = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, signOut } = useAuth();
 
   // If user is logged in and not admin, show user dashboard
   if (user && !isAdmin) {
@@ -38,6 +39,14 @@ const Index = () => {
                     </Link>
                   </Button>
                 )}
+                <Button 
+                  onClick={signOut}
+                  variant="outline" 
+                  size="sm"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
               </div>
             ) : (
               <div className="flex items-center gap-3">
