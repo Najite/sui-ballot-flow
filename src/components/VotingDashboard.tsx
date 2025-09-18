@@ -4,55 +4,143 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Vote, Clock, Users, Trophy, Calendar, MapPin } from "lucide-react";
 
-const mockElections = [
-  {
-    id: 1,
-    title: "2024 Presidential Election",
-    description: "Choose the next President of the United States",
-    status: "active",
-    endDate: "2024-11-05",
-    totalVotes: 15420,
-    yourVote: null,
-    location: "United States",
-    candidates: [
-      { name: "Sarah Johnson", party: "Democratic", votes: 7250, percentage: 47 },
-      { name: "Michael Chen", party: "Republican", votes: 6890, percentage: 45 },
-      { name: "Alex Rivera", party: "Independent", votes: 1280, percentage: 8 }
-    ]
-  },
-  {
-    id: 2,
-    title: "City Mayor Election",
-    description: "Select your local mayor for the next term",
-    status: "active", 
-    endDate: "2024-10-15",
-    totalVotes: 3240,
-    yourVote: "Emma Thompson",
-    location: "San Francisco, CA",
-    candidates: [
-      { name: "Emma Thompson", party: "Progressive", votes: 1620, percentage: 50 },
-      { name: "Robert Kim", party: "Conservative", votes: 1134, percentage: 35 },
-      { name: "Lisa Martinez", party: "Moderate", votes: 486, percentage: 15 }
-    ]
-  },
-  {
-    id: 3,
-    title: "School Board Elections",
-    description: "Vote for school board representatives",
-    status: "ended",
-    endDate: "2024-09-20",
-    totalVotes: 1890,
-    yourVote: "David Wilson",
-    location: "District 12",
-    candidates: [
-      { name: "David Wilson", party: "Education First", votes: 945, percentage: 50 },
-      { name: "Maria Garcia", party: "Reform", votes: 756, percentage: 40 },
-      { name: "John Adams", party: "Traditional", votes: 189, percentage: 10 }
-    ]
-  }
-];
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+
+interface Election {
+  id: string;
+  title: string;
+  description: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  totalVotes: number;
+  yourVote: string | null;
+  candidates: Candidate[];
+}
+
+interface Candidate {
+  id: string;
+  name: string;
+  party: string;
+  votes: number;
+  percentage: number;
+}
 
 const VotingDashboard = () => {
+  const [elections, setElections] = useState<Election[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchElections();
+  }, [user]);
+
+  const fetchElections = async () => {
+    try {
+      // Fetch elections
+      const { data: electionsData, error: electionsError } = await supabase
+        .from('elections')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (electionsError) throw electionsError;
+
+      // For each election, fetch candidates and vote data
+      const electionsWithData = await Promise.all(
+        (electionsData || []).map(async (election) => {
+          // Fetch candidates for this election
+          const { data: candidatesData, error: candidatesError } = await supabase
+            .from('candidates')
+            .select('*')
+            .eq('election_id', election.id)
+            .order('vote_count', { ascending: false });
+
+          if (candidatesError) throw candidatesError;
+
+          // Calculate total votes
+          const totalVotes = candidatesData?.reduce((sum, candidate) => sum + candidate.vote_count, 0) || 0;
+
+          // Get user's vote for this election if logged in
+          let yourVote = null;
+          if (user) {
+            const { data: voteData } = await supabase
+              .from('votes')
+              .select(`
+                candidate_id,
+                candidates!inner(name)
+              `)
+              .eq('voter_id', user.id)
+              .eq('election_id', election.id)
+              .single();
+
+            if (voteData) {
+              yourVote = voteData.candidates.name;
+            }
+          }
+
+          // Format candidates data
+          const candidates = candidatesData?.map(candidate => ({
+            id: candidate.id,
+            name: candidate.name,
+            party: candidate.party || 'Independent',
+            votes: candidate.vote_count,
+            percentage: totalVotes > 0 ? Math.round((candidate.vote_count / totalVotes) * 100) : 0
+          })) || [];
+
+          // Determine status based on dates
+          const now = new Date();
+          const startTime = new Date(election.start_time);
+          const endTime = new Date(election.end_time);
+          
+          let status = 'upcoming';
+          if (now >= startTime && now <= endTime) {
+            status = 'active';
+          } else if (now > endTime) {
+            status = 'ended';
+          }
+
+          return {
+            id: election.id,
+            title: election.title,
+            description: election.description || '',
+            status,
+            endDate: election.end_time.split('T')[0],
+            totalVotes,
+            yourVote,
+            location: 'Online', // Default location
+            candidates
+          };
+        })
+      );
+
+      setElections(electionsWithData);
+    } catch (error) {
+      console.error('Error fetching elections:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <section className="py-16 px-6 bg-background">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-foreground mb-4">Active Elections</h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Loading elections...
+            </p>
+          </div>
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="py-16 px-6 bg-background">
       <div className="max-w-7xl mx-auto">
@@ -63,8 +151,9 @@ const VotingDashboard = () => {
           </p>
         </div>
 
-        <div className="grid gap-8">
-          {mockElections.map((election) => (
+        {elections.length > 0 ? (
+          <div className="grid gap-8">
+            {elections.map((election) => (
             <Card key={election.id} className="vote-card">
               <CardHeader>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -82,7 +171,7 @@ const VotingDashboard = () => {
                     <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <MapPin className="w-4 h-4" />
-                        {election.location}
+                        Online Election
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
@@ -155,8 +244,13 @@ const VotingDashboard = () => {
                 )}
               </CardContent>
             </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-xl text-muted-foreground">No elections available at this time.</p>
+          </div>
+        )}
       </div>
     </section>
   );

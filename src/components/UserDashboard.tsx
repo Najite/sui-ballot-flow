@@ -123,7 +123,10 @@ export const UserDashboard = () => {
       // Fetch candidates for the selected election
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
-        .select('*')
+        .select(`
+          *,
+          positions!inner(title)
+        `)
         .eq('election_id', selectedElectionId)
         .order('name');
 
@@ -458,6 +461,7 @@ export const UserDashboard = () => {
                               <Label htmlFor={candidate.id} className="cursor-pointer">
                                 <div className="font-medium">{candidate.name}</div>
                                 <div className="text-sm text-muted-foreground">{candidate.party}</div>
+                                <div className="text-xs text-muted-foreground">{candidate.positions?.title}</div>
                                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                   {candidate.description}
                                 </div>

@@ -11,6 +11,7 @@ import { Calendar, Plus, Edit, Trash2, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { Dialog as ViewDialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 interface Election {
   id: string;
@@ -22,6 +23,8 @@ interface Election {
   created_at: string;
   updated_at: string;
   created_by: string;
+  totalVotes?: number;
+  candidates?: any[];
 }
 
 export const ElectionManagement = () => {
@@ -29,6 +32,8 @@ export const ElectionManagement = () => {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingElection, setEditingElection] = useState<Election | null>(null);
+  const [viewingElection, setViewingElection] = useState<Election | null>(null);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -44,7 +49,31 @@ export const ElectionManagement = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setElections(data || []);
+      
+      // Fetch additional data for each election
+      const electionsWithData = await Promise.all(
+        (data || []).map(async (election) => {
+          // Get total votes for this election
+          const { data: votesData, error: votesError } = await supabase
+            .from('votes')
+            .select('id')
+            .eq('election_id', election.id);
+
+          // Get candidates for this election
+          const { data: candidatesData, error: candidatesError } = await supabase
+            .from('candidates')
+            .select('*')
+            .eq('election_id', election.id);
+
+          return {
+            ...election,
+            totalVotes: votesData?.length || 0,
+            candidates: candidatesData || []
+          };
+        })
+      );
+
+      setElections(electionsWithData);
     } catch (error) {
       console.error('Error fetching elections:', error);
       toast({
@@ -137,6 +166,35 @@ export const ElectionManagement = () => {
       toast({
         title: "Error",
         description: "Failed to delete election",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const viewElectionDetails = async (election: Election) => {
+    try {
+      // Fetch detailed election data including candidates and votes
+      const { data: candidatesData, error: candidatesError } = await supabase
+        .from('candidates')
+        .select(`
+          *,
+          positions(title)
+        `)
+        .eq('election_id', election.id)
+        .order('vote_count', { ascending: false });
+
+      if (candidatesError) throw candidatesError;
+
+      setViewingElection({
+        ...election,
+        candidates: candidatesData || []
+      });
+      setIsViewDialogOpen(true);
+    } catch (error) {
+      console.error('Error fetching election details:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load election details",
         variant: "destructive",
       });
     }
@@ -302,6 +360,9 @@ export const ElectionManagement = () => {
                     <div className="text-sm text-muted-foreground">
                       {election.description}
                     </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {election.totalVotes} votes • {election.candidates?.length || 0} candidates
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>{getStatusBadge(election)}</TableCell>
@@ -316,6 +377,13 @@ export const ElectionManagement = () => {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => viewElectionDetails(election)}
+                    >
+                      View Details
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -347,6 +415,84 @@ export const ElectionManagement = () => {
           </div>
         )}
       </CardContent>
+
+      {/* View Election Details Dialog */}
+      <ViewDialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewingElection?.title}</DialogTitle>
+            <DialogDescription>
+              Election details and current results
+            </DialogDescription>
+          </DialogHeader>
+          
+          {viewingElection && (
+            <div className="space-y-6">
+              {/* Election Info */}
+              <div className="space-y-2">
+                <h4 className="font-semibold">Description</h4>
+                <p className="text-sm text-muted-foreground">{viewingElection.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium">Start Time:</span>
+                  <p className="text-muted-foreground">
+                    {new Date(viewingElection.start_time).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium">End Time:</span>
+                  <p className="text-muted-foreground">
+                    {new Date(viewingElection.end_time).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium">Total Votes:</span>
+                  <p className="text-muted-foreground">{viewingElection.totalVotes}</p>
+                </div>
+                <div>
+                  <span className="font-medium">Status:</span>
+                  <div className="mt-1">{getStatusBadge(viewingElection)}</div>
+                </div>
+              </div>
+              {/* Candidates Results */}
+              <div className="space-y-4">
+                <h4 className="font-semibold">Candidates & Results</h4>
+                {viewingElection.candidates && viewingElection.candidates.length > 0 ? (
+                  <div className="space-y-3">
+                    {viewingElection.candidates.map((candidate, index) => {
+                      const totalVotes = viewingElection.totalVotes || 0;
+                      const percentage = totalVotes > 0 ? Math.round((candidate.vote_count / totalVotes) * 100) : 0;
+                      
+                      return (
+                        <div key={candidate.id} className="p-3 border rounded-lg">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-medium">{candidate.name}</div>
+                              <div className="text-sm text-muted-foreground">{candidate.party}</div>
+                              {candidate.positions && (
+                                <div className="text-xs text-muted-foreground">{candidate.positions.title}</div>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <div className="font-semibold">{candidate.vote_count} votes</div>
+                              <div className="text-sm text-muted-foreground">{percentage}%</div>
+                            </div>
+                          </div>
+                          <Progress value={percentage} className="h-2" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">No candidates registered for this election.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </ViewDialog>
     </Card>
   );
 };
