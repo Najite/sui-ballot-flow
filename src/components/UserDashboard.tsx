@@ -197,14 +197,20 @@ export const UserDashboard = () => {
           if (error) throw error;
         }
       } else {
-        // Insert new vote - we'll set position_id to a default value for now
+        // Get the position_id from the selected candidate
+        const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
+        if (!selectedCandidate || !selectedCandidate.position_id) {
+          throw new Error('Selected candidate does not have a valid position');
+        }
+
+        // Insert new vote
         const { error } = await supabase
           .from('votes')
           .insert({
             election_id: selectedElectionId,
             candidate_id: selectedCandidateId,
             voter_id: user.id,
-            position_id: '00000000-0000-0000-0000-000000000000' // Temporary default
+            position_id: selectedCandidate.position_id
           });
 
         if (error) throw error;
