@@ -73,7 +73,7 @@ const VotingDashboard = () => {
               `)
               .eq('voter_id', user.id)
               .eq('election_id', election.id)
-              .single();
+              .maybeSingle();
 
             if (voteData) {
               yourVote = voteData.candidates.name;
