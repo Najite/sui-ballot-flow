@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Users, Vote, Calendar, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { UserManagement } from './admin/UserManagement';
 import { ElectionManagement } from './admin/ElectionManagement';
 import { CandidateManagement } from './admin/CandidateManagement';
@@ -21,15 +22,82 @@ export const AdminDashboard = () => {
   });
 
   useEffect(() => {
-    // Load dashboard stats
-    // This would typically fetch from your database
-    setStats({
-      totalUsers: 0,
-      pendingUsers: 0,
-      activeElections: 0,
-      totalVotes: 0
-    });
+    fetchDashboardStats();
+    
+    // Set up real-time subscriptions for stats updates
+    const profilesSubscription = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchDashboardStats();
+      })
+      .subscribe();
+
+    const votesSubscription = supabase
+      .channel('votes-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => {
+        fetchDashboardStats();
+      })
+      .subscribe();
+
+    const electionsSubscription = supabase
+      .channel('elections-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, () => {
+        fetchDashboardStats();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profilesSubscription);
+      supabase.removeChannel(votesSubscription);
+      supabase.removeChannel(electionsSubscription);
+    };
   }, []);
+
+  const fetchDashboardStats = async () => {
+    try {
+      // Fetch total users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, role, approved_at');
+
+      if (profilesError) throw profilesError;
+
+      const totalUsers = profilesData?.length || 0;
+      const pendingUsers = profilesData?.filter(profile => 
+        profile.role === 'pending' || (profile.role === 'voter' && !profile.approved_at)
+      ).length || 0;
+
+      // Fetch active elections
+      const now = new Date().toISOString();
+      const { data: electionsData, error: electionsError } = await supabase
+        .from('elections')
+        .select('id, start_time, end_time')
+        .lte('start_time', now)
+        .gte('end_time', now);
+
+      if (electionsError) throw electionsError;
+
+      const activeElections = electionsData?.length || 0;
+
+      // Fetch total votes
+      const { data: votesData, error: votesError } = await supabase
+        .from('votes')
+        .select('id');
+
+      if (votesError) throw votesError;
+
+      const totalVotes = votesData?.length || 0;
+
+      setStats({
+        totalUsers,
+        pendingUsers,
+        activeElections,
+        totalVotes
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    }
+  };
 
   if (!isAdmin) {
     return (
