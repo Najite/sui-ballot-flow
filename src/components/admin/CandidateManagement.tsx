@@ -48,6 +48,21 @@ export const CandidateManagement = () => {
 
   useEffect(() => {
     fetchData();
+    
+    // Set up real-time subscription for vote updates
+    const votesSubscription = supabase
+      .channel('candidate-votes-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => {
+        fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(votesSubscription);
+    };
   }, []);
 
   const fetchData = async () => {
