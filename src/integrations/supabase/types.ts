@@ -23,6 +23,7 @@ export type Database = {
           image_url: string | null
           name: string
           party: string | null
+          position_id: string | null
           updated_at: string
           vote_count: number
         }
@@ -34,6 +35,7 @@ export type Database = {
           image_url?: string | null
           name: string
           party?: string | null
+          position_id?: string | null
           updated_at?: string
           vote_count?: number
         }
@@ -45,6 +47,7 @@ export type Database = {
           image_url?: string | null
           name?: string
           party?: string | null
+          position_id?: string | null
           updated_at?: string
           vote_count?: number
         }
@@ -54,6 +57,13 @@ export type Database = {
             columns: ["election_id"]
             isOneToOne: false
             referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidates_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "positions"
             referencedColumns: ["id"]
           },
         ]
@@ -94,6 +104,44 @@ export type Database = {
         }
         Relationships: []
       }
+      positions: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          election_id: string
+          id: string
+          max_candidates: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          election_id: string
+          id?: string
+          max_candidates?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          election_id?: string
+          id?: string
+          max_candidates?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "positions_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           approved_at: string | null
@@ -130,6 +178,7 @@ export type Database = {
           created_at: string
           election_id: string
           id: string
+          position_id: string
           voter_id: string
         }
         Insert: {
@@ -137,6 +186,7 @@ export type Database = {
           created_at?: string
           election_id: string
           id?: string
+          position_id: string
           voter_id: string
         }
         Update: {
@@ -144,6 +194,7 @@ export type Database = {
           created_at?: string
           election_id?: string
           id?: string
+          position_id?: string
           voter_id?: string
         }
         Relationships: [
@@ -159,6 +210,13 @@ export type Database = {
             columns: ["election_id"]
             isOneToOne: false
             referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "positions"
             referencedColumns: ["id"]
           },
         ]

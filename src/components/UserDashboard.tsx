@@ -21,13 +21,6 @@ interface Election {
   status: string;
 }
 
-interface Position {
-  id: string;
-  title: string;
-  description: string;
-  election_id: string;
-}
-
 interface Candidate {
   id: string;
   name: string;
@@ -35,22 +28,22 @@ interface Candidate {
   description: string;
   image_url: string | null;
   vote_count: number;
-  position_id: string;
+  election_id: string;
 }
 
 interface Vote {
   id: string;
-  position_id: string;
   candidate_id: string;
+  election_id: string;
+  voter_id: string;
 }
 
 export const UserDashboard = () => {
   const [elections, setElections] = useState<Election[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [userVotes, setUserVotes] = useState<Vote[]>([]);
   const [selectedElectionId, setSelectedElectionId] = useState<string>('');
-  const [votingData, setVotingData] = useState<Record<string, string>>({});
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -127,15 +120,6 @@ export const UserDashboard = () => {
     if (!selectedElectionId || !user) return;
 
     try {
-      // Fetch positions for the selected election
-      const { data: positionsData, error: positionsError } = await supabase
-        .from('positions')
-        .select('*')
-        .eq('election_id', selectedElectionId)
-        .order('title');
-
-      if (positionsError) throw positionsError;
-
       // Fetch candidates for the selected election
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
@@ -154,16 +138,15 @@ export const UserDashboard = () => {
 
       if (votesError) throw votesError;
 
-      setPositions(positionsData || []);
       setCandidates(candidatesData || []);
       setUserVotes(votesData || []);
 
-      // Initialize voting data with existing votes
-      const initialVotingData: Record<string, string> = {};
-      votesData?.forEach(vote => {
-        initialVotingData[vote.position_id] = vote.candidate_id;
-      });
-      setVotingData(initialVotingData);
+      // Set selected candidate if user already voted
+      if (votesData && votesData.length > 0) {
+        setSelectedCandidateId(votesData[0].candidate_id);
+      } else {
+        setSelectedCandidateId('');
+      }
 
     } catch (error) {
       console.error('Error fetching election data:', error);
@@ -175,15 +158,8 @@ export const UserDashboard = () => {
     }
   };
 
-  const handleVoteChange = (positionId: string, candidateId: string) => {
-    setVotingData(prev => ({
-      ...prev,
-      [positionId]: candidateId
-    }));
-  };
-
-  const submitVotes = async () => {
-    if (!user || !selectedElectionId) return;
+  const submitVote = async () => {
+    if (!user || !selectedElectionId || !selectedCandidateId) return;
 
     setSubmitting(true);
     try {
@@ -205,54 +181,48 @@ export const UserDashboard = () => {
         throw new Error('Voting has ended');
       }
 
-      // Process each position vote
-      for (const [positionId, candidateId] of Object.entries(votingData)) {
-        if (!candidateId) continue;
+      // Check if user already voted for this election
+      const existingVote = userVotes.find(v => v.election_id === selectedElectionId);
 
-        // Check if user already voted for this position
-        const existingVote = userVotes.find(v => v.position_id === positionId);
-
-        if (existingVote) {
-          // Update existing vote
-          if (existingVote.candidate_id !== candidateId) {
-            const { error } = await supabase
-              .from('votes')
-              .update({ 
-                candidate_id: candidateId,
-                election_id: selectedElectionId 
-              })
-              .eq('id', existingVote.id);
-
-            if (error) throw error;
-          }
-        } else {
-          // Insert new vote
+      if (existingVote) {
+        // Update existing vote
+        if (existingVote.candidate_id !== selectedCandidateId) {
           const { error } = await supabase
             .from('votes')
-            .insert({
-              election_id: selectedElectionId,
-              position_id: positionId,
-              candidate_id: candidateId,
-              voter_id: user.id
-            });
+            .update({ 
+              candidate_id: selectedCandidateId 
+            })
+            .eq('id', existingVote.id);
 
           if (error) throw error;
         }
+      } else {
+        // Insert new vote - we'll set position_id to a default value for now
+        const { error } = await supabase
+          .from('votes')
+          .insert({
+            election_id: selectedElectionId,
+            candidate_id: selectedCandidateId,
+            voter_id: user.id,
+            position_id: '00000000-0000-0000-0000-000000000000' // Temporary default
+          });
+
+        if (error) throw error;
       }
 
       toast({
         title: "Success",
-        description: "Your votes have been submitted successfully!",
+        description: "Your vote has been submitted successfully!",
       });
 
       // Refresh the data to show updated votes
       fetchElectionData();
 
     } catch (error) {
-      console.error('Error submitting votes:', error);
+      console.error('Error submitting vote:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to submit votes",
+        description: error instanceof Error ? error.message : "Failed to submit vote",
         variant: "destructive",
       });
     } finally {
@@ -274,12 +244,8 @@ export const UserDashboard = () => {
     }
   };
 
-  const getCandidatesForPosition = (positionId: string) => {
-    return candidates.filter(candidate => candidate.position_id === positionId);
-  };
-
-  const hasUserVoted = (positionId: string) => {
-    return userVotes.some(vote => vote.position_id === positionId);
+  const hasUserVoted = () => {
+    return userVotes.some(vote => vote.election_id === selectedElectionId);
   };
 
   if (loading) {
@@ -292,6 +258,7 @@ export const UserDashboard = () => {
 
   const selectedElection = elections.find(e => e.id === selectedElectionId);
   const electionStatus = selectedElection ? getElectionStatus(selectedElection) : null;
+  const canVote = userProfile?.role === 'voter' && userProfile?.approved_at && electionStatus?.canVote;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted">
@@ -303,7 +270,7 @@ export const UserDashboard = () => {
               <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 Voting Dashboard
               </h1>
-              <Badge variant="secondary">Voter</Badge>
+              <Badge variant="secondary">{userProfile?.role || 'Pending'}</Badge>
             </div>
             
             <div className="flex items-center space-x-4">
@@ -352,7 +319,7 @@ export const UserDashboard = () => {
               Select Election
             </CardTitle>
             <CardDescription>
-              Choose an election to view positions and cast your votes
+              Choose an election to view candidates and cast your vote
             </CardDescription>
           </CardHeader>
           
@@ -412,10 +379,10 @@ export const UserDashboard = () => {
                         {electionStatus.label}
                       </Badge>
                     )}
-                    {electionStatus?.canVote && userProfile?.role === 'voter' && userProfile?.approved_at && (
+                    {canVote && (
                       <Button 
-                        onClick={submitVotes}
-                        disabled={submitting || Object.keys(votingData).length === 0}
+                        onClick={submitVote}
+                        disabled={submitting || !selectedCandidateId}
                         className="vote-button"
                       >
                         {submitting ? (
@@ -426,12 +393,12 @@ export const UserDashboard = () => {
                         ) : (
                           <>
                             <Vote className="w-4 h-4 mr-2" />
-                            Submit Votes
+                            Submit Vote
                           </>
                         )}
                       </Button>
                     )}
-                    {electionStatus?.canVote && userProfile?.role !== 'voter' && (
+                    {electionStatus?.canVote && !canVote && (
                       <div className="text-sm text-muted-foreground">
                         Only approved voters can cast votes
                       </div>
@@ -441,82 +408,70 @@ export const UserDashboard = () => {
               </CardHeader>
             </Card>
 
-            {/* Positions and Candidates */}
-            {positions.map((position) => {
-              const positionCandidates = getCandidatesForPosition(position.id);
-              const userVoted = hasUserVoted(position.id);
-              
-              return (
-                <Card key={position.id} className="vote-card">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <MapPin className="w-5 h-5" />
-                          {position.title}
-                          {userVoted && (
-                            <CheckCircle className="w-5 h-5 text-success" />
-                          )}
-                        </CardTitle>
-                        <CardDescription>{position.description}</CardDescription>
-                      </div>
-                      {userVoted && (
-                        <Badge className="bg-success text-success-foreground">
-                          Voted
-                        </Badge>
+            {/* Candidates */}
+            <Card className="vote-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5" />
+                      Candidates
+                      {hasUserVoted() && (
+                        <CheckCircle className="w-5 h-5 text-success" />
                       )}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    {positionCandidates.length > 0 ? (
-                      <RadioGroup
-                        value={votingData[position.id] || ''}
-                        onValueChange={(value) => handleVoteChange(position.id, value)}
-                        disabled={!electionStatus?.canVote || userProfile?.role !== 'voter' || !userProfile?.approved_at}
-                      >
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {positionCandidates.map((candidate) => (
-                            <div key={candidate.id} className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                              <RadioGroupItem value={candidate.id} id={candidate.id} />
-                              <div className="flex items-center space-x-3 flex-1">
-                                <Avatar>
-                                  <AvatarImage src={candidate.image_url || ''} alt={candidate.name} />
-                                  <AvatarFallback>
-                                    {candidate.name.split(' ').map(n => n[0]).join('')}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1">
-                                  <Label htmlFor={candidate.id} className="cursor-pointer">
-                                    <div className="font-medium">{candidate.name}</div>
-                                    <div className="text-sm text-muted-foreground">{candidate.party}</div>
-                                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                      {candidate.description}
-                                    </div>
-                                  </Label>
+                    </CardTitle>
+                    <CardDescription>Select your preferred candidate</CardDescription>
+                  </div>
+                  {hasUserVoted() && (
+                    <Badge className="bg-success text-success-foreground">
+                      Voted
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              
+              <CardContent>
+                {candidates.length > 0 ? (
+                  <RadioGroup
+                    value={selectedCandidateId}
+                    onValueChange={setSelectedCandidateId}
+                    disabled={!canVote}
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {candidates.map((candidate) => (
+                        <div key={candidate.id} className="flex items-center space-x-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <RadioGroupItem value={candidate.id} id={candidate.id} />
+                          <div className="flex items-center space-x-3 flex-1">
+                            <Avatar>
+                              <AvatarImage src={candidate.image_url || ''} alt={candidate.name} />
+                              <AvatarFallback>
+                                {candidate.name.split(' ').map(n => n[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <Label htmlFor={candidate.id} className="cursor-pointer">
+                                <div className="font-medium">{candidate.name}</div>
+                                <div className="text-sm text-muted-foreground">{candidate.party}</div>
+                                <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {candidate.description}
                                 </div>
-                              </div>
+                              </Label>
                             </div>
-                          ))}
+                            <div className="text-sm font-medium">
+                              {candidate.vote_count} votes
+                            </div>
+                          </div>
                         </div>
-                      </RadioGroup>
-                    ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No candidates available for this position
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-            {positions.length === 0 && (
-              <Card>
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  No positions available for this election
-                </CardContent>
-              </Card>
-            )}
+                      ))}
+                    </div>
+                  </RadioGroup>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No candidates available for this election
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 

@@ -120,10 +120,7 @@ export const VotingResults = () => {
       // Fetch candidates with their vote counts
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
-        .select(`
-          *,
-          positions(title)
-        `)
+        .select('*')
         .eq('election_id', electionId)
         .order('vote_count', { ascending: false });
 
@@ -303,7 +300,7 @@ export const VotingResults = () => {
                       <div>
                         <h4 className="font-semibold">{candidate.name}</h4>
                         <p className="text-sm text-muted-foreground">{candidate.party}</p>
-                        <p className="text-xs text-muted-foreground">{candidate.positions?.title}</p>
+                        
                       </div>
                     </div>
                     
