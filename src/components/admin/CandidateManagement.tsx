@@ -67,17 +67,24 @@ export const CandidateManagement = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch candidates with election details
+      // Fetch candidates with election details and real-time vote counts
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
         .select(`
           *,
           elections!inner(title),
-          positions!inner(title)
+          positions!inner(title),
+          votes(id)
         `)
         .order('name');
 
       if (candidatesError) throw candidatesError;
+
+      // Calculate actual vote counts from votes table
+      const candidatesWithVotes = candidatesData?.map(candidate => ({
+        ...candidate,
+        vote_count: candidate.votes?.length || 0
+      })) || [];
 
       // Fetch elections for the dropdown
       const { data: electionsData, error: electionsError } = await supabase
@@ -95,7 +102,7 @@ export const CandidateManagement = () => {
 
       if (positionsError) throw positionsError;
 
-      setCandidates(candidatesData || []);
+      setCandidates(candidatesWithVotes);
       setElections(electionsData || []);
       setPositions(positionsData || []);
     } catch (error) {

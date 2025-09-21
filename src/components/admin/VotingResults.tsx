@@ -117,22 +117,32 @@ export const VotingResults = () => {
 
       if (electionError) throw electionError;
 
-      // Fetch candidates with their current vote counts from the database
+      // Fetch candidates with real-time vote counts
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
         .select(`
           *,
-          positions!inner(title)
+          positions!inner(title),
+          votes(id)
         `)
         .eq('election_id', electionId)
-        .order('vote_count', { ascending: false });
+        .order('name');
 
       if (candidatesError) throw candidatesError;
 
+      // Calculate actual vote counts from votes table
+      const candidatesWithVotes = candidatesData?.map(candidate => ({
+        ...candidate,
+        vote_count: candidate.votes?.length || 0
+      })) || [];
+
+      // Sort by actual vote count
+      candidatesWithVotes.sort((a, b) => b.vote_count - a.vote_count);
+
       // Calculate total votes and percentages
-      const totalVotes = candidatesData.reduce((sum, candidate) => sum + candidate.vote_count, 0);
+      const totalVotes = candidatesWithVotes.reduce((sum, candidate) => sum + candidate.vote_count, 0);
       
-      const candidatesWithPercentage = candidatesData.map(candidate => ({
+      const candidatesWithPercentage = candidatesWithVotes.map(candidate => ({
         ...candidate,
         percentage: totalVotes > 0 ? (candidate.vote_count / totalVotes) * 100 : 0
       }));

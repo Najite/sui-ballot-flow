@@ -154,17 +154,24 @@ export const UserDashboard = () => {
     if (!selectedElectionId || !user) return;
 
     try {
-      // Fetch candidates for the selected election
+      // Fetch candidates for the selected election with real-time vote counts
       const { data: candidatesData, error: candidatesError } = await supabase
         .from('candidates')
         .select(`
           *,
-          positions!inner(title)
+          positions!inner(title),
+          votes(id)
         `)
         .eq('election_id', selectedElectionId)
         .order('name');
 
       if (candidatesError) throw candidatesError;
+
+      // Calculate actual vote counts and sort by votes
+      const candidatesWithVotes = candidatesData?.map(candidate => ({
+        ...candidate,
+        vote_count: candidate.votes?.length || 0
+      })).sort((a, b) => b.vote_count - a.vote_count) || [];
 
       // Fetch user's votes for this election
       const { data: votesData, error: votesError } = await supabase
@@ -175,7 +182,7 @@ export const UserDashboard = () => {
 
       if (votesError) throw votesError;
 
-      setCandidates(candidatesData || []);
+      setCandidates(candidatesWithVotes);
       setUserVotes(votesData || []);
 
       // Set selected candidate if user already voted

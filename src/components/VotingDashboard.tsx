@@ -81,17 +81,29 @@ const VotingDashboard = () => {
       // For each election, fetch candidates and vote data
       const electionsWithData = await Promise.all(
         (electionsData || []).map(async (election) => {
-          // Fetch candidates for this election
+          // Fetch candidates for this election with real-time vote counts
           const { data: candidatesData, error: candidatesError } = await supabase
             .from('candidates')
-            .select('*')
+            .select(`
+              *,
+              votes(id)
+            `)
             .eq('election_id', election.id)
-            .order('vote_count', { ascending: false });
+            .order('name');
 
           if (candidatesError) throw candidatesError;
 
+          // Calculate actual vote counts from the votes table
+          const candidatesWithVotes = candidatesData?.map(candidate => ({
+            ...candidate,
+            actual_vote_count: candidate.votes?.length || 0
+          })) || [];
+
+          // Sort by actual vote count
+          candidatesWithVotes.sort((a, b) => b.actual_vote_count - a.actual_vote_count);
+
           // Calculate total votes
-          const totalVotes = candidatesData?.reduce((sum, candidate) => sum + candidate.vote_count, 0) || 0;
+          const totalVotes = candidatesWithVotes.reduce((sum, candidate) => sum + candidate.actual_vote_count, 0);
 
           // Get user's vote for this election if logged in
           let yourVote = null;
@@ -112,13 +124,13 @@ const VotingDashboard = () => {
           }
 
           // Format candidates data
-          const candidates = candidatesData?.map(candidate => ({
+          const candidates = candidatesWithVotes.map(candidate => ({
             id: candidate.id,
             name: candidate.name,
             party: candidate.party || 'Independent',
-            votes: candidate.vote_count,
-            percentage: totalVotes > 0 ? Math.round((candidate.vote_count / totalVotes) * 100) : 0
-          })) || [];
+            votes: candidate.actual_vote_count,
+            percentage: totalVotes > 0 ? Math.round((candidate.actual_vote_count / totalVotes) * 100) : 0
+          }));
 
           // Determine status based on dates
           const now = new Date();
