@@ -303,7 +303,7 @@ export const VotingResults = () => {
                       <div>
                         <h4 className="font-semibold">{candidate.name}</h4>
                         <p className="text-sm text-muted-foreground">{candidate.party}</p>
-                        <p className="text-xs text-muted-foreground">{candidate.positions?.title}</p>
+                        <p className="text-xs text-muted-foreground">{candidate.party || 'Independent'}</p>
                       </div>
                     </div>
                     

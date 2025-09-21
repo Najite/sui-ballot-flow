@@ -233,10 +233,38 @@ export const UserDashboard = () => {
           if (error) throw error;
         }
       } else {
-        // Get the position_id from the selected candidate
+        // Get candidate to find position_id - if not available, create a default position
         const selectedCandidate = candidates.find(c => c.id === selectedCandidateId);
-        if (!selectedCandidate || !selectedCandidate.position_id) {
-          throw new Error('Selected candidate does not have a valid position');
+        if (!selectedCandidate) {
+          throw new Error('Selected candidate not found');
+        }
+
+        // For now, we'll create votes without position_id requirement or use a default
+        let positionId;
+        // Get or create a default position for this election
+        const { data: position, error: posError } = await supabase
+          .from('positions')
+          .select('id')
+          .eq('election_id', selectedElectionId)
+          .limit(1)
+          .maybeSingle();
+        
+        if (position) {
+          positionId = position.id;
+        } else {
+          // Create a default position
+          const { data: newPosition, error: createError } = await supabase
+            .from('positions')
+            .insert({
+              election_id: selectedElectionId,
+              title: 'General Election',
+              description: 'General election position'
+            })
+            .select('id')
+            .single();
+          
+          if (createError) throw createError;
+          positionId = newPosition.id;
         }
 
         // Insert new vote
@@ -246,7 +274,7 @@ export const UserDashboard = () => {
             election_id: selectedElectionId,
             candidate_id: selectedCandidateId,
             voter_id: user.id,
-            position_id: selectedCandidate.position_id
+            position_id: positionId
           });
 
         if (error) throw error;
@@ -494,7 +522,7 @@ export const UserDashboard = () => {
                               <Label htmlFor={candidate.id} className="cursor-pointer">
                                 <div className="font-medium">{candidate.name}</div>
                                 <div className="text-sm text-muted-foreground">{candidate.party}</div>
-                                <div className="text-xs text-muted-foreground">{candidate.positions?.title}</div>
+                                <div className="text-xs text-muted-foreground">{candidate.party || 'Independent'}</div>
                                 <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                   {candidate.description}
                                 </div>

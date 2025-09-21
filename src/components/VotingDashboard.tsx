@@ -136,11 +136,11 @@ const VotingDashboard = () => {
             id: election.id,
             title: election.title,
             description: election.description || '',
+            start_time: election.start_time,
+            end_time: election.end_time,
             status,
-            endDate: election.end_time.split('T')[0],
             totalVotes,
             yourVote,
-            location: 'Online', // Default location
             candidates
           };
         })
@@ -206,7 +206,7 @@ const VotingDashboard = () => {
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        Ends: {election.endDate}
+                        Ends: {new Date(election.end_time).toLocaleDateString()}
                       </div>
                       <div className="flex items-center gap-1">
                         <Users className="w-4 h-4" />
