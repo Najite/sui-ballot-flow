@@ -93,17 +93,14 @@ const VotingDashboard = () => {
 
           if (candidatesError) throw candidatesError;
 
-          // Calculate actual vote counts from the votes table
+          // Calculate actual vote counts and sort by votes
           const candidatesWithVotes = candidatesData?.map(candidate => ({
             ...candidate,
-            actual_vote_count: candidate.votes?.length || 0
-          })) || [];
-
-          // Sort by actual vote count
-          candidatesWithVotes.sort((a, b) => b.actual_vote_count - a.actual_vote_count);
+            vote_count: candidate.votes?.length || 0
+          })).sort((a, b) => b.vote_count - a.vote_count) || [];
 
           // Calculate total votes
-          const totalVotes = candidatesWithVotes.reduce((sum, candidate) => sum + candidate.actual_vote_count, 0);
+          const totalVotes = candidatesWithVotes.reduce((sum, candidate) => sum + candidate.vote_count, 0);
 
           // Get user's vote for this election if logged in
           let yourVote = null;
@@ -128,8 +125,8 @@ const VotingDashboard = () => {
             id: candidate.id,
             name: candidate.name,
             party: candidate.party || 'Independent',
-            votes: candidate.actual_vote_count,
-            percentage: totalVotes > 0 ? Math.round((candidate.actual_vote_count / totalVotes) * 100) : 0
+            votes: candidate.vote_count,
+            percentage: totalVotes > 0 ? Math.round((candidate.vote_count / totalVotes) * 100) : 0
           }));
 
           // Determine status based on dates
