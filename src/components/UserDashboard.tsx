@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { VotingHistory } from '@/components/VotingHistory';
 
 interface Election {
   id: string;
@@ -282,7 +283,7 @@ export const UserDashboard = () => {
 
       toast({
         title: "Success",
-        description: "Your vote has been submitted successfully!",
+        description: `Your vote for ${candidates.find(c => c.id === selectedCandidateId)?.name} has been recorded!`,
       });
 
       // Refresh the data to show updated votes
@@ -553,6 +554,9 @@ export const UserDashboard = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Voting History Section */}
+        <VotingHistory />
       </main>
     </div>
   );
