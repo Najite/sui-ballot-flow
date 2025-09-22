@@ -34,6 +34,7 @@ const VotingDashboard = () => {
   const { user } = useAuth();
 
   useEffect(() => {
+    console.log('Current user:', user);
     fetchElections();
     
     // Set up real-time subscription for vote updates
