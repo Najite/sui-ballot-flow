@@ -11,11 +11,6 @@ import { LogOut } from 'lucide-react';
 const Index = () => {
   const { user, isAdmin, signOut } = useAuth();
 
-  // If user is logged in and not admin, show user dashboard
-  if (user && !isAdmin) {
-    return <UserDashboard />;
-  }
-
   return (
     <main>
       {/* Navigation Header */}
