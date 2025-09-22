@@ -66,7 +66,7 @@ const VotingDashboard = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, []);
 
   const fetchElections = async () => {
     try {
@@ -224,14 +224,20 @@ const VotingDashboard = () => {
                     </div>
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    {election.status === "active" && !election.yourVote && (
+                   <div className="flex flex-col sm:flex-row gap-3">
+                    {election.status === "active" && user && !election.yourVote && (
                       <Button className="vote-button">
                         <Vote className="w-4 h-4 mr-2" />
                         Vote Now
                       </Button>
                     )}
-                    {election.yourVote && (
+                    {election.status === "active" && !user && (
+                      <Button variant="outline" disabled>
+                        <Vote className="w-4 h-4 mr-2" />
+                        Login to Vote
+                      </Button>
+                    )}
+                    {election.yourVote && user && (
                       <div className="text-center">
                         <Badge variant="outline" className="mb-2">Your Vote</Badge>
                         <p className="text-sm font-medium">{election.yourVote}</p>
@@ -253,7 +259,7 @@ const VotingDashboard = () => {
                         <div className="flex items-center gap-3">
                           <span className="font-medium">{candidate.name}</span>
                           <Badge variant="outline" className="text-xs">{candidate.party}</Badge>
-                          {candidate.name === election.yourVote && (
+                          {candidate.name === election.yourVote && user && (
                             <Badge className="text-xs bg-success text-success-foreground">Your Choice</Badge>
                           )}
                         </div>
