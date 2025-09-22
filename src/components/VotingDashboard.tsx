@@ -81,23 +81,17 @@ const VotingDashboard = () => {
       // For each election, fetch candidates and vote data
       const electionsWithData = await Promise.all(
         (electionsData || []).map(async (election) => {
-          // Fetch candidates for this election with real-time vote counts
+          // Fetch candidates for this election - use vote_count column directly
           const { data: candidatesData, error: candidatesError } = await supabase
             .from('candidates')
-            .select(`
-              *,
-              votes(id)
-            `)
+            .select('*')
             .eq('election_id', election.id)
-            .order('name');
+            .order('vote_count', { ascending: false });
 
           if (candidatesError) throw candidatesError;
 
-          // Calculate actual vote counts and sort by votes
-          const candidatesWithVotes = candidatesData?.map(candidate => ({
-            ...candidate,
-            vote_count: candidate.votes?.length || 0
-          })).sort((a, b) => b.vote_count - a.vote_count) || [];
+          // Use the vote_count column directly (updated by trigger)
+          const candidatesWithVotes = candidatesData || [];
 
           // Calculate total votes
           const totalVotes = candidatesWithVotes.reduce((sum, candidate) => sum + candidate.vote_count, 0);
