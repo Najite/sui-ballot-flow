@@ -99,19 +99,24 @@ const VotingDashboard = () => {
 
           // Get user's vote for this election if logged in
           let yourVote = null;
-          if (user) {
-            const { data: voteData } = await supabase
-              .from('votes')
-              .select(`
-                candidate_id,
-                candidates!inner(name)
-              `)
-              .eq('voter_id', user.id)
-              .eq('election_id', election.id)
-              .maybeSingle();
+          if (user?.id) {
+            try {
+              const { data: voteData } = await supabase
+                .from('votes')
+                .select(`
+                  candidate_id,
+                  candidates!inner(name)
+                `)
+                .eq('voter_id', user.id)
+                .eq('election_id', election.id)
+                .maybeSingle();
 
-            if (voteData) {
-              yourVote = voteData.candidates.name;
+              if (voteData) {
+                yourVote = voteData.candidates.name;
+              }
+            } catch (error) {
+              // Ignore vote lookup errors for anonymous users
+              console.log('Could not fetch user vote (likely anonymous user):', error);
             }
           }
 
